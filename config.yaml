@@ -1,0 +1,13 @@
+# Web crawler service defaults. Durations use Go syntax (e.g. 500ms, 60s, 5m).
+# Override path with CRAWLER_CONFIG=/path/to/file.yaml
+
+crawler:
+  max_depth: 3
+  workers: 10
+  url_cooldown: 500ms
+  http_timeout: 60s
+  request_timeout: 300s
+
+server:
+  addr: ":8080"
+  log_level: "info" # debug|info|warn|error

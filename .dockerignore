@@ -1,0 +1,11 @@
+.git
+.cursor
+bin
+**/*.test
+**/*.out
+coverage.*
+*.log
+*.tmp
+node_modules
+.DS_Store
+
