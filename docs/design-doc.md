@@ -66,9 +66,9 @@ This document explains the design choices with sizing math, and then lays out a 
 
 ## Back-of-the-envelope sizing calculations (why these choices)
 
-## Scale & assumptions
+### Assumptions
 
-- **Volume**: \(1 \times 10^9\) URLs per month (year-month partitions)
+- **Volume**: 1 billion URLs per month (year-month partitions)
 - **Average metadata record size** (rough): ~300 bytes (URL, timestamps, hashes, title/description, status fields)
 - **HTML content**: potentially large and variable → store in object storage, not relational DB
 - **Content scope**: we only store and reason about **textual HTML content** (no image/video blobs); media URLs may be recorded as links but binary data is not ingested in this design.
@@ -78,62 +78,19 @@ This document explains the design choices with sizing math, and then lays out a 
 
 ### URL list storage size
 
-If average URL storage is ~250 bytes:
+Sizing math (URL list storage, throughput required, worker concurrency estimate):
 
-\[
-250 \text{ B/URL} \times 10^9 \approx 250 \text{ GB/month}
-\]
+![Sizing calculations (URL list, throughput, concurrency)](assets/sizing-1.png)
 
 So storing the raw monthly URL list is not the main challenge; **processing and querying** are.
 
-### Throughput required
-
-If we want to finish 1B URLs in ~30 days:
-
-\[
-\frac{10^9}{30 \times 24 \times 3600} \approx 385 \text{ URLs/sec (sustained)}
-\]
-
-If we want to finish in 7 days:
-
-\[
-\frac{10^9}{7 \times 24 \times 3600} \approx 1653 \text{ URLs/sec}
-\]
-
-This throughput drives worker count and outbound bandwidth.
-
-### Worker concurrency estimate
-
-Let’s assume average fetch+parse time:
-- HTTP pages: ~1s (best-case) to ~5s (typical)
-
-If p95 is ~3s and we need ~1650 URLs/sec (7-day target):
-
-\[
-\text{concurrency} \approx 1650 \times 3 \approx 4950
-\]
-
-That suggests thousands of concurrent fetch slots across the fleet (split into pools).
-
 ### HTML storage in S3
 
-If we store only a subset (e.g., 20KB compressed average) for successful pages:
+Sizing math (S3 HTML storage + metadata DB size):
 
-\[
-20 \text{ KB} \times 10^9 \approx 20 \text{ TB/month}
-\]
+![Sizing calculations (S3 HTML + metadata DB size)](assets/sizing-2.png)
 
-This is realistic for object storage with lifecycle policies; it’s not suitable for OLTP databases.
-
-### Metadata DB size
-
-If one metadata row averages ~300 bytes:
-
-\[
-300 \text{ B} \times 10^9 \approx 300 \text{ GB/month}
-\]
-
-Over 12 months: ~3.6TB; over 5 years: ~18TB. Storage is manageable, but **indexes and query patterns** dictate the DB choice.
+Storage is manageable; **indexes and query patterns** dictate the DB choice.
 
 ---
 
