@@ -123,7 +123,7 @@ If one metadata row averages ~300 bytes:
 
 $$300 \text{ B} \times 10^9 \approx 300 \text{ GB/month}$$
 
-Over 12 months: ~3.6TB; over 5 years: ~18TB. Storage is manageable, but **indexes and query patterns** dictate the DB choice.
+Over 12 months: ~3.6TB; over 5 years: ~18TB. Storage is manageable, but **indexes and query patterns** dictate the DB choice. So we are going with Mysql cluster only as its already in our ecosystem (reading input from it) and it for read queries scale we can add replica and all cloud providers provide sufficient support up to 64 TB DB size. 
 
 ---
 

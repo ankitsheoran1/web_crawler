@@ -137,6 +137,7 @@ Request body (JSON):
 | `max_depth` | no | Overrides default from config |
 | `workers` | no | Overrides default from config |
 | `url_cooldown` | no | Duration string; overrides default |
+| `use_browser` | no | Used for URL for which default http/net api hit are blocked |
 
 **Response** `202 Accepted`:
 
@@ -151,9 +152,9 @@ Request body (JSON):
 Example:
 
 ```bash
-curl -s -X POST http://localhost:8080/v1/crawl \
+curl -s -X POST https://trip-pool.ing/v1/crawl \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com","max_depth":2,"workers":8,"url_cooldown":"1s"}'
+  -d '{"url":"https://example.com","max_depth":2,"workers":8,"url_cooldown":"1s",  "use_browser": true}'
 ```
 
 ### Get job status and result
@@ -163,7 +164,7 @@ curl -s -X POST http://localhost:8080/v1/crawl \
 Returns the full job document: `status` (`pending`, `running`, `completed`, `failed`, `cancelled`), `params`, optional `result` with `urls` and `errors`, timestamps, and `error` on failure.
 
 ```bash
-curl -s http://localhost:8080/v1/jobs/<id-from-submit>
+curl -s https://trip-pool.ing/v1/jobs/<id-from-submit>
 ```
 
 ## Project layout
