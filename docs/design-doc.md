@@ -66,6 +66,16 @@ This document explains the design choices with sizing math, and then lays out a 
 
 ## Back-of-the-envelope sizing calculations (why these choices)
 
+## Scale & assumptions
+
+- **Volume**: \(1 \times 10^9\) URLs per month (year-month partitions)
+- **Average metadata record size** (rough): ~300 bytes (URL, timestamps, hashes, title/description, status fields)
+- **HTML content**: potentially large and variable → store in object storage, not relational DB
+- **Content scope**: we only store and reason about **textual HTML content** (no image/video blobs); media URLs may be recorded as links but binary data is not ingested in this design.
+- **Dedup**:
+  - **URL-level dedup**: avoid re-fetching same normalized URL within a month
+  - **Content-level dedup**: detect identical/near-identical content using content hash
+
 ### URL list storage size
 
 If average URL storage is ~250 bytes:
@@ -362,18 +372,36 @@ Demonstrate that the architecture can:
 
 ### Potential blockers (and mitigations)
 
+- **Duplicate URL fetch / re-push** (producer or upstream sending dup rows)
+  - Even with dedup, misconfigurations or bugs could cause the producer to re-publish ranges or upstream to resend the same URLs.
+  - Mitigation:
+    - Strong normalization + hashing and **idempotent writes** keyed by `(year_month, url_hash)`.
+    - Kafka keys by `url_hash` so all attempts for a URL land on the same partition/consumer.
+    - Metrics on dedup hit rate to detect anomalies.
+
+- **Metadata DB write pressure / hot partitions**
+  - Write-heavy workloads (e.g., spikes or hot hosts) can overload the primary.
+  - Mitigation (future, if needed): introduce an **async DB writer**:
+    - Workers push metadata events to an internal “metadata.write.v1” topic or queue.
+    - A pool of writer consumers perform batched inserts/updates to the DB.
+    - This decouples fetch latency from DB write latency at the cost of added complexity and slightly delayed visibility.
+  - This async writer is **not part of the initial POC**, but the design keeps it as an upgrade path.
+
 - **Bot protection / WAF blocks**
   - Mitigation: classify and surface as `blocked`; keep browser pool limited; consider IP strategy and legal constraints.
+
 - **Browser execution in servers/containers**
   - Mitigation: containerize chromium, pass correct flags (`--no-sandbox`, `--disable-dev-shm-usage`), run a small dedicated pool.
-- **Redis memory cost at 1B scale**
-  - Mitigation: Bloom/Cuckoo filters; shard by month/host; consider probabilistic dedup.
-- **Metadata DB write pressure**
-  - Mitigation: batching, partitioning, async writes; or move to KV store for online queries + lake for analytics.
-- **Kafka operational overhead**
-  - Mitigation: managed Kafka; strict topic/partition sizing and quotas.
+
 - **Egress bandwidth and cost**
   - Mitigation: dedup early, store only needed HTML, prefer HTTP pool, tune retries.
+
+- **DNS choked / resolver saturation**
+  - High QPS to a single DNS resolver can become a bottleneck or lead to throttling.
+  - Mitigation:
+    - Use **multiple DNS resolvers** (round-robin across providers or internal resolvers).
+    - Cache DNS responses aggressively (per-host TTL) in the worker layer.
+    - Monitor DNS latency and failure rates as first-class metrics.
 
 ### Release plan (quality gates)
 
