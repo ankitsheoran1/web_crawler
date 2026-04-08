@@ -131,6 +131,10 @@ Over 12 months: ~3.6TB; over 5 years: ~18TB. Storage is manageable, but **indexe
 
 ### Diagram
 
+Reference sketch (as discussed):
+
+![Architecture sketch](assets/architecture-sketch.png)
+
 ```mermaid
 flowchart LR
   A[MySQL URL List\n(year_month partition)] -->|paged producer| B[Kafka\nurl.fetch.v1]
@@ -217,11 +221,44 @@ Indexes that align to query patterns:
 
 - Reads from MySQL in pages by PK
 - Publishes to `url.fetch.v1` with key = `url_hash`
-- Stores a checkpoint so it can resume safely
+- Stores a checkpoint so it can resume safely (see **Crash recovery / checkpointing**)
 - Applies backpressure based on:
   - Kafka lag
   - worker saturation
   - metadata DB write latency / replication lag
+
+### Crash recovery / checkpointing (if the MySQL reader crashes mid-month)
+
+We assume the ingestion producer can crash at any point (deploys, host loss, OOM). We need a durable “snapshot” of progress so we can resume without re-reading an entire month.
+
+**What we store (per `year_month`)**
+
+- **cursor**: last successfully *published* MySQL PK (or `(pk, updated_at)` for late updates)
+- **batch metadata**: batch size, publish timestamp, producer instance id
+- **optional**: checksum/count of rows published for audit
+
+**How we store it (options + trade-offs)**
+
+- **Option A: MySQL checkpoint table (simplest, strong consistency)**
+  - Table: `ingestion_checkpoint(year_month, last_pk, updated_at, ...)`
+  - On publish of a batch, update checkpoint in the same DB (or a dedicated small DB).
+  - **Pros**: very simple; easy to inspect/repair; aligns with source-of-truth.
+  - **Cons**: couples producer liveness to MySQL; write hot-spot if too frequent (mitigate by checkpointing per batch, not per row).
+
+- **Option B: Kafka compacted topic (producer progress as an event stream)**
+  - Topic: `ingestion.checkpoint` (compacted), key=`year_month`, value=`last_pk + metadata`
+  - **Pros**: decouples from MySQL; naturally versioned; easy to roll back/inspect history; scales well.
+  - **Cons**: operational overhead; you must reason about “published vs committed” state carefully.
+
+- **Option C: Object storage (S3) checkpoint files**
+  - Write `s3://.../checkpoints/year_month.json` periodically.
+  - **Pros**: very cheap; simple durability; good for audit.
+  - **Cons**: not ideal for frequent updates; eventual consistency considerations; harder to coordinate multiple producers.
+
+**Recommended approach**
+
+- Use **Kafka compacted topic** for the canonical checkpoint (Option B), plus optionally mirror to MySQL for convenience.
+- Make the producer **idempotent** by ensuring downstream writes are keyed by `(year_month, url_hash)` (or include `crawl_time` versioning). That way, even if we re-publish some URLs after a crash, workers can safely upsert without duplicating results.
 
 ### Worker pools
 
