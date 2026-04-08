@@ -131,27 +131,8 @@ Over 12 months: ~3.6TB; over 5 years: ~18TB. Storage is manageable, but **indexe
 
 ### Diagram
 
-Reference sketch (as discussed):
 
 ![Architecture sketch](assets/architecture-sketch.png)
-
-```mermaid
-flowchart LR
-  A[MySQL URL List\n(year_month partition)] -->|paged producer| B[Kafka\nurl.fetch.v1]
-  B --> C[Fetcher Workers (HTTP)]
-  B --> D[Fetcher Workers (Browser pool)]
-  C -->|dedup check| E[(Dedup Store\nRedis / Bloom)]
-  D -->|dedup check| E
-  C --> F[S3\nHTML blobs]
-  D --> F
-  C --> G[(Metadata Store\nMySQL cluster or KV store)]
-  D --> G
-  C --> H[Kafka\nurl.discovered.v1 (optional)]
-  D --> H
-  H --> I[URL Persistor\n(next cycle)]
-  I --> A
-  G --> J[Query API / Consumers]
-```
 
 ### Why Kafka
 
