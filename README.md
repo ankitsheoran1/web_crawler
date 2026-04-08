@@ -177,8 +177,13 @@ internal/repo/         # in-memory job store
 internal/service/      # async job execution
 internal/web/          # URL helpers and HTTP client helper
 config.yaml            # default configuration file
+docs/                  # design docs (Parts 2+)
 Makefile
 ```
+
+## Docs
+
+- `docs/design-doc.md`: Part 2+3 system design and POC plan
 
 ## License
 
