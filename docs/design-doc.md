@@ -153,6 +153,7 @@ Dedup is a **cost control lever**: without it, reprocessing duplicates explodes 
 At 1B scale, plain Redis `SET` for every URL can be expensive due to overhead. A practical approach is:
 - Bloom filter per month (cheap membership check)
 - optional exact-set for high-value URLs where false positives are unacceptable
+- Redis have support for Bloom filter also so we can use that
 
 ### Why S3 for HTML
 
@@ -187,12 +188,12 @@ We therefore store:
 - `fetch_status_class` (ok, http_4xx, http_5xx, timeout, dns, tls, blocked, protocol_error, other)
 - `http_status` (nullable)
 - `duration_ms`
-- `title`, `description`, `body_snippet`
+- `title`, `description`
 - `content_hash` (nullable)
 - `s3_key` (nullable; only when we store the body)
 
 Indexes that align to query patterns:
-- `(year_month, url_hash)` for monthly point lookups
+- `(year_month, url)` for monthly point lookups
 - `(url_hash)` in a “latest crawl” table/materialized view
 - `(year_month, host, crawl_time)` for domain/month analysis
 
@@ -238,9 +239,13 @@ We assume the ingestion producer can crash at any point (deploys, host loss, OOM
   - **Pros**: very cheap; simple durability; good for audit.
   - **Cons**: not ideal for frequent updates; eventual consistency considerations; harder to coordinate multiple producers.
 
+- - **Option D: Store a status in Mysql per input URL weather a URL is published into queue or NOT**
+  - **Pros**: Simple, Just need to maintain one another column in table.
+  - **Cons**: For each read now we have to write also in DB and now this DB write would directly core part of crawling which can impact in case DB is slow / down and for each row we have one read and one write. 
+
 **Recommended approach**
 
-- Use **Kafka compacted topic** for the canonical checkpoint (Option B), plus optionally mirror to MySQL for convenience.
+- Either Use **Kafka compacted topic** for the canonical checkpoint (Option B), OR store a Checkpoint file in S3.
 - Make the producer **idempotent** by ensuring downstream writes are keyed by `(year_month, url_hash)`. That way, even if we re-publish some URLs after a crash, workers can safely upsert without duplicating results.
 
 ### Worker pools
@@ -267,7 +272,6 @@ We store a small taxonomy:
 
 We keep:
 - `error_breakdown` counts
-- 1–2 `errors[]` representative samples
 
 ---
 
@@ -275,8 +279,8 @@ We keep:
 
 ### SLA (external promise)
 
-- **Completion SLA**: For a given `year_month`, **99%** of URLs reach a terminal state (success or classified failure) within **30 days** of ingestion start with properly retried the pages according to error handling .
-- **Query API availability SLA**: **99.99999%** monthly availability for read endpoints.
+- **Completion SLA**: For a given `year_month`, All of URLs reach a terminal state (success or classified failure) within **30 days** of ingestion start with properly retried the pages according to error handling .
+- **Query API availability SLA**: **99.99999%** monthly availability for read endpoints and p99 read latency should be under 500ms.
 
 ### SLOs (internal)
 
@@ -287,7 +291,7 @@ We keep:
 
 ### How we achieve them
 
-- autoscale workers on lag + latency
+- Since workers are stateless so we can autoscale workers on lag + latency
 - separate browser pool so expensive fetches don’t starve the pipeline
 - per-host rate limits to reduce bans (which reduces rework)
 - DLQ + replay procedures for systematic issues
