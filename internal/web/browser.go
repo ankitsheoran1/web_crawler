@@ -5,14 +5,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 )
 
 type NavStrategy string
 
 const (
-	NavStrategyCDP     NavStrategy = "cdp_navigate"
+	NavStrategyCDP      NavStrategy = "cdp_navigate"
 	NavStrategyNavigate NavStrategy = "chromedp_navigate"
 )
 
@@ -41,11 +41,10 @@ func (f *chromedpFetcher) FetchRenderedHTML(ctx context.Context, url string) (st
 func (f *chromedpFetcher) FetchRenderedHTMLWithStrategy(ctx context.Context, url string, strategy NavStrategy) (string, string, error) {
 	allocOpts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	allocOpts = append(allocOpts,
-		chromedp.Flag("headless", "new"),
-		chromedp.Flag("disable-gpu", true),
-		// Containers frequently lack sandbox support; this makes Chromium usable in Docker.
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("headless", "new"), // 'new' is better, but 'false' (headed) is safest for debugging
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"), // Hides the "webdriver" flag
+		chromedp.NoSandbox,
 	)
 	if p := os.Getenv("CHROME_PATH"); p != "" {
 		allocOpts = append(allocOpts, chromedp.ExecPath(p))
@@ -93,4 +92,3 @@ func (f *chromedpFetcher) FetchRenderedHTMLWithStrategy(ctx context.Context, url
 	}
 	return final, htmlStr, nil
 }
-

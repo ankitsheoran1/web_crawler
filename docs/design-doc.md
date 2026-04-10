@@ -44,6 +44,8 @@ This document explains the design choices with sizing math, and then lays out a 
 - **FR7: Observability**
   - Track progress per `year_month` and per domain.
   - Provide error classification (403 blocked, timeout, DNS, etc.).
+- **FR8: Control FanOut and Depth**
+  - It can be case we want to control per seed url fanout or depth upto which we want to explore.
 
 ## Non-functional requirements
 
@@ -58,7 +60,7 @@ This document explains the design choices with sizing math, and then lays out a 
 - **NFR4: Availability**
   - Metadata query API remains available under load (read-heavy).
 - **NFR5: Performance**
-  - Good latency for point lookups and recent-month queries.
+  - latency under 500 ms for point lookups and recent-month queries.
 - **NFR6: Operability**
   - Clear metrics, dashboards, alerts; controlled backpressure.
 
@@ -84,7 +86,7 @@ If average URL storage is ~250 bytes:
 
 $$250 \text{ B/URL} \times 10^9 \approx 250 \text{ GB/month}$$
 
-So storing the raw monthly URL list is not the main challenge; **processing and querying** are.
+So storing the raw monthly URL list is not the main challenge; **processing and querying** are for which we can use simple patiotined by time MYSQL cluster with multiple read replicas .
 
 ### Throughput required
 
@@ -174,7 +176,7 @@ We therefore store:
 ### URL normalization + hashes
 
 - `normalized_url`: canonicalized form used for dedup
-- `url_hash`: stable hash of `normalized_url` (use BINARY(16) preferred)
+- `url_hash`: stable hash of `normalized_url`
 - `content_hash`: hash of HTML content (for duplicate content detection)
 
 ### Metadata schema (example)
@@ -239,7 +241,7 @@ We assume the ingestion producer can crash at any point (deploys, host loss, OOM
 **Recommended approach**
 
 - Use **Kafka compacted topic** for the canonical checkpoint (Option B), plus optionally mirror to MySQL for convenience.
-- Make the producer **idempotent** by ensuring downstream writes are keyed by `(year_month, url_hash)` (or include `crawl_time` versioning). That way, even if we re-publish some URLs after a crash, workers can safely upsert without duplicating results.
+- Make the producer **idempotent** by ensuring downstream writes are keyed by `(year_month, url_hash)`. That way, even if we re-publish some URLs after a crash, workers can safely upsert without duplicating results.
 
 ### Worker pools
 
@@ -273,8 +275,8 @@ We keep:
 
 ### SLA (external promise)
 
-- **Completion SLA**: For a given `year_month`, **99%** of URLs reach a terminal state (success or classified failure) within **30 days** of ingestion start.
-- **Query API availability SLA**: **99.9%** monthly availability for read endpoints.
+- **Completion SLA**: For a given `year_month`, **99%** of URLs reach a terminal state (success or classified failure) within **30 days** of ingestion start with properly retried the pages according to error handling .
+- **Query API availability SLA**: **99.99999%** monthly availability for read endpoints.
 
 ### SLOs (internal)
 
@@ -317,7 +319,7 @@ We keep:
 - Metrics: Prometheus + Grafana (or CloudWatch metrics)
 - Logs: structured JSON logs → OpenSearch/Loki
 - Tracing: OpenTelemetry (producer → worker → DB/S3)
-- Alerting: on lag spikes, blocked spikes, replication lag, DLQ growth
+- Alerting: on lag spikes, blocked spikes, replication lag, DLQ growth, CPU usage, memory Usage, I/O latency, duplicate URL
 
 ---
 
@@ -379,6 +381,9 @@ Demonstrate that the architecture can:
 
 - **Bot protection / WAF blocks**
   - Mitigation: classify and surface as `blocked`; keep browser pool limited; consider IP strategy and legal constraints.
+
+- **DB Read Query Slow**
+  - Since we already serving query from read replica and directly impacting our system availability so we can add a caching layer with storing hot URL since we already have redis in ecosystem we can leverage that.
 
 - **Browser execution in servers/containers**
   - Mitigation: containerize chromium, pass correct flags (`--no-sandbox`, `--disable-dev-shm-usage`), run a small dedicated pool.
