@@ -204,7 +204,7 @@ Indexes that align to query patterns:
 ### Ingestion producer
 
 - Reads from MySQL in pages by PK
-- Publishes to `url.fetch.v1` with key = `url_hash`
+- Publishes to kafka with key = `url_hash`
 - Stores a checkpoint so it can resume safely (see **Crash recovery / checkpointing**)
 - Applies backpressure based on:
   - Kafka lag
@@ -333,7 +333,7 @@ We keep:
 
 Demonstrate that the architecture can:
 - ingest a month batch (smaller scale)
-- process it reliably with retries + dedup
+- process it reliably with retries and manually push duplicate batch and crash server in b/w
 - store metadata + HTML
 - provide query endpoints and dashboards
 
@@ -354,7 +354,7 @@ Demonstrate that the architecture can:
   - Fetch, parse metadata, upload to S3, write metadata row
   - Basic retry + backoff
 - **Step 3: Dedup**
-  - Bloom filter per month + TTL
+  - Bloom filter per month + TTL(count number of false +ve metrics)
   - Metrics for dedup hit rate
 - **Step 4: Browser pool**
   - Enable for a small allowlist of domains
